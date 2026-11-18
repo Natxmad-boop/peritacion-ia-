@@ -6,15 +6,16 @@
   <title>Peritación de Daños IA</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #020617; }
+    /* Ajustes para que ocupe toda la pantalla sin scroll ni recortes */
+    html, body { height: 100%; margin: 0; padding: 0; background-color: #020617; overscroll-behavior: none; }
     #cameraFeed { width: 100%; height: 100%; object-fit: cover; }
     #overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
   </style>
 </head>
-<body class="text-white flex flex-col justify-between select-none font-sans h-screen w-screen relative">
+<body class="text-white flex flex-col h-[100dvh] w-screen overflow-hidden select-none font-sans">
 
-  <!-- CABECERA DE ESTADO -->
-  <header class="p-4 bg-slate-900/90 border-b border-slate-800 flex justify-between items-center z-20 backdrop-blur absolute top-0 w-full">
+  <!-- CABECERA DE ESTADO (Arriba) -->
+  <header class="p-4 bg-slate-900/95 border-b border-slate-800 flex justify-between items-center z-20 w-full shrink-0">
     <div>
       <span class="text-[10px] font-bold text-blue-400 tracking-wider uppercase">Peritación Inteligente</span>
       <h1 class="text-xs font-bold text-slate-100 flex items-center gap-1.5">
@@ -25,16 +26,16 @@
     <span class="bg-blue-900/40 text-blue-300 border border-blue-700/50 text-[11px] px-2 py-0.5 rounded font-mono font-bold">IA Visión</span>
   </header>
 
-  <!-- VISOR DE CÁMARA Y DETECCIÓN -->
-  <main class="relative flex-1 bg-black flex items-center justify-center overflow-hidden w-full h-full">
+  <!-- VISOR DE CÁMARA (Ocupa todo el espacio central) -->
+  <main class="relative flex-1 bg-black flex items-center justify-center overflow-hidden w-full">
     <video id="cameraFeed" autoplay playsinline muted></video>
     <canvas id="overlayCanvas"></canvas>
 
     <!-- Flash Blanco al disparar -->
     <div id="flashEffect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-300 z-50"></div>
 
-    <!-- HUD de encuadre -->
-    <div class="absolute inset-4 top-20 bottom-28 border border-emerald-400/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 z-10">
+    <!-- HUD de encuadre pericial -->
+    <div class="absolute inset-4 border border-emerald-400/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 z-10">
       <span class="text-[10px] font-mono text-emerald-400 bg-slate-950/80 px-2 py-1 rounded w-fit">Encuadre: 1.5 - 2.0 m</span>
       
       <!-- Cuadro de resultados -->
@@ -47,12 +48,12 @@
     </div>
   </main>
 
-  <!-- PANEL DE DISPARO -->
-  <footer class="p-4 bg-slate-900/90 border-t border-slate-800 flex flex-col items-center gap-2 z-20 backdrop-blur absolute bottom-0 w-full">
-    <button id="captureBtn" class="w-16 h-16 rounded-full border-4 border-emerald-400 bg-emerald-500 active:scale-95 transition-all text-slate-950 font-bold text-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
+  <!-- PANEL DE DISPARO (Abajo, con su propio espacio reservado) -->
+  <footer class="p-5 pb-8 bg-slate-900 border-t border-slate-800 flex flex-col items-center justify-center gap-3 z-20 w-full shrink-0">
+    <button id="captureBtn" class="w-20 h-20 rounded-full border-4 border-emerald-400 bg-emerald-500 active:scale-95 transition-all text-slate-950 font-bold text-3xl flex items-center justify-center shadow-lg shadow-emerald-500/50">
       📸
     </button>
-    <span class="text-[11px] text-slate-400 font-mono">Pulsar para escanear</span>
+    <span class="text-[11px] text-slate-400 font-mono uppercase tracking-widest">Escanear Daños</span>
   </footer>
 
   <script>
@@ -66,7 +67,7 @@
     const damageDetails = document.getElementById('damageDetails');
     const flashEffect = document.getElementById('flashEffect');
 
-    // CONFIGURACIÓN DEL MODELO PÚBLICO (Sin API KEY necesaria)
+    // CONFIGURACIÓN DEL MODELO PÚBLICO
     const ROBOFLOW_MODEL = "car-damage-detection-5"; 
     const ROBOFLOW_API_KEY = "TU_API_KEY_AQUI"; 
 
@@ -117,19 +118,16 @@
         
         const data = await response.json();
         
-        // Si hay error de API, saltará al catch
         if (data.error) throw new Error(data.error);
 
         renderDetections(data.predictions);
 
       } catch (error) {
-        // Si el modelo público falla o pide clave, hacemos un respaldo para que la app no se rompa
         console.warn("Fallo en API pública. Usando simulación:", error);
         fallbackSimulation();
       }
     });
 
-    // Función para pintar las cajas reales
     function renderDetections(predictions) {
       if (!predictions || predictions.length === 0) {
         statusText.innerText = "No se aprecian daños evidentes";
@@ -144,12 +142,10 @@
         const x = p.x - p.width / 2;
         const y = p.y - p.height / 2;
 
-        // Dibujar caja
         ctx.strokeStyle = "#ef4444";
         ctx.lineWidth = 6;
         ctx.strokeRect(x, y, p.width, p.height);
         
-        // Etiqueta
         ctx.fillStyle = "#ef4444";
         ctx.fillRect(x, y - 30, p.width, 30);
         ctx.fillStyle = "#ffffff";
@@ -165,7 +161,6 @@
       statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-400";
     }
 
-    // Respaldo por si la API no responde
     function fallbackSimulation() {
       const w = canvas.width * 0.4;
       const h = canvas.height * 0.25;
@@ -184,8 +179,8 @@
 
       resultBox.classList.remove('hidden');
       setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
-      damageDetails.innerHTML = "Detectado: <span class='text-red-400 font-bold'>Daño simulado</span><br>(Configura tu API Key para IA real)";
-      statusText.innerText = "Simulación (Falta API)";
+      damageDetails.innerHTML = "Detectado: <span class='text-red-400 font-bold'>Daño simulado</span>";
+      statusText.innerText = "Simulación activa";
       statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400";
     }
 
