@@ -44,7 +44,7 @@
       📸
     </button>
     <button id="downloadBtn" class="hidden mt-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-sm font-bold py-2 px-6 rounded-full transition-all">
-      💾 Guardar Foto Analizada
+      💾 Guardar Foto y Seguir
     </button>
     <span class="text-[11px] text-slate-400 font-mono uppercase tracking-widest mt-1">Escanear Daños</span>
   </footer>
@@ -85,16 +85,11 @@
     async function loadModel() {
       try {
         statusText.innerText = "Cargando modelo de IA...";
-        // RUTA CORREGIDA: Busca el archivo en la misma carpeta de GitHub
         const response = await fetch('./yolov8n.onnx');
-        
         if (!response.ok) throw new Error("No se encuentra el archivo");
         
         const modelBuffer = await response.arrayBuffer();
-        
-        session = await ort.InferenceSession.create(modelBuffer, {
-            executionProviders: ['wasm']
-        });
+        session = await ort.InferenceSession.create(modelBuffer, { executionProviders: ['wasm'] });
         
         statusText.innerText = "IA lista. Apunta y dispara.";
         statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
@@ -163,11 +158,9 @@
             const label = CLASS_NAMES[bestClass];
             damageDetails.innerHTML = `Detectado: <span class='text-red-400 font-bold'>${label}</span> (${Math.round(maxConf * 100)}%)`;
             statusText.innerText = "Objeto detectado";
-            statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-blue-400";
         } else {
             damageDetails.innerHTML = `No se detectó nada con claridad`;
             statusText.innerText = "Análisis completado";
-            statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
         }
 
         downloadBtn.classList.remove('hidden');
@@ -193,6 +186,19 @@
       link.download = 'peritacion-coche.jpg';
       link.href = finalCanvas.toDataURL('image/jpeg', 0.9);
       link.click();
+
+      // --- ESTO ES LO NUEVO: REINICIAR LA APP ---
+      setTimeout(() => {
+        // Borramos el cuadro del análisis
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Ocultamos el botón de guardar y el cuadro de texto
+        downloadBtn.classList.add('hidden');
+        resultBox.style.transform = 'scale(0)';
+        setTimeout(() => resultBox.classList.add('hidden'), 300);
+        // Volvemos a poner el estado en verde
+        statusText.innerText = "IA lista. Apunta y dispara.";
+        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+      }, 500); // Espera medio segundo a que el móvil abra el menú de guardado
     });
 
     window.addEventListener('load', async () => {
