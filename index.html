@@ -59,6 +59,7 @@
     const flashEffect = document.getElementById('flashEffect');
 
     let session = null;
+    // Lista básica de objetos que reconoce este modelo
     const CLASS_NAMES = ["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light"];
 
     async function initCamera() {
@@ -81,8 +82,8 @@
     async function loadModel() {
       try {
         statusText.innerText = "Cargando modelo de IA...";
-        // Aquí ya está corregido para que busque el archivo sin el .onnx
-        const response = await fetch('./yolov8n');
+        // Busca el archivo exactamente como lo has subido a GitHub
+        const response = await fetch('./yolov8n.onnx');
         const modelBuffer = await response.arrayBuffer();
         
         session = await ort.InferenceSession.create(modelBuffer, {
