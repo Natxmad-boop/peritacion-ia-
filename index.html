@@ -5,11 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Peritación de Daños IA</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Aseguramos que el video y el canvas se adapten bien sin romper el diseño */
+    html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #020617; }
+    #cameraFeed { width: 100%; height: 100%; object-fit: cover; }
+    #overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  </style>
 </head>
-<body class="bg-slate-950 text-white min-h-screen flex flex-col justify-between overflow-hidden select-none font-sans">
+<body class="text-white flex flex-col justify-between select-none font-sans h-screen w-screen relative">
 
   <!-- CABECERA DE ESTADO -->
-  <header class="p-4 bg-slate-900/90 border-b border-slate-800 flex justify-between items-center z-10 backdrop-blur">
+  <header class="p-4 bg-slate-900/90 border-b border-slate-800 flex justify-between items-center z-20 backdrop-blur absolute top-0 w-full">
     <div>
       <span class="text-[10px] font-bold text-blue-400 tracking-wider uppercase">Peritación Inteligente</span>
       <h1 class="text-xs font-bold text-slate-100 flex items-center gap-1.5">
@@ -21,37 +27,39 @@
   </header>
 
   <!-- VISOR DE CÁMARA Y DETECCIÓN -->
-  <main class="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
-    <video id="cameraFeed" autoplay playsinline muted class="w-full h-full object-cover"></video>
-    <canvas id="overlayCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+  <main class="relative flex-1 bg-black flex items-center justify-center overflow-hidden w-full h-full">
+    <!-- Video de la cámara -->
+    <video id="cameraFeed" autoplay playsinline muted></video>
+    
+    <!-- Lienzo para dibujar los daños -->
+    <canvas id="overlayCanvas"></canvas>
 
-    <!-- Flash Blanco al disparar -->
+    <!-- Efecto Flash Blanco al disparar -->
     <div id="flashEffect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-300 z-50"></div>
 
-    <!-- HUD de encuadre -->
-    <div class="absolute inset-6 border border-emerald-400/40 rounded-xl pointer-events-none flex flex-col justify-between p-3">
+    <!-- HUD de encuadre pericial -->
+    <div class="absolute inset-4 top-20 bottom-28 border border-emerald-400/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 z-10">
       <span class="text-[10px] font-mono text-emerald-400 bg-slate-950/80 px-2 py-1 rounded w-fit">Encuadre: 1.5 - 2.0 m</span>
       
-      <!-- Cuadro de resultados (oculto al principio) -->
+      <!-- Cuadro de resultados -->
       <div id="resultBox" class="hidden self-center bg-slate-900/95 border-2 border-emerald-500 rounded-xl p-4 text-xs text-center backdrop-blur shadow-2xl transition-all duration-300" style="transform: scale(0);">
         <p id="damageTitle" class="font-bold text-emerald-400 text-sm">✓ Análisis completado</p>
         <p id="damageDetails" class="text-[11px] text-slate-300 mt-1">Calculando baremo de reparación...</p>
       </div>
       
-      <span class="text-[10px] font-mono text-slate-400 self-center">Apunta a la zona dañada de la carrocería</span>
+      <span class="text-[10px] font-mono text-slate-400 self-center mb-2">Apunta a la zona dañada de la carrocería</span>
     </div>
   </main>
 
-  <!-- PANEL DE DISPARO -->
-  <footer class="p-6 bg-slate-900/90 border-t border-slate-800 flex flex-col items-center gap-2 z-10 backdrop-blur">
+  <!-- PANEL DE DISPARO (Fijado abajo para que no desaparezca) -->
+  <footer class="p-4 bg-slate-900/90 border-t border-slate-800 flex flex-col items-center gap-2 z-20 backdrop-blur absolute bottom-0 w-full">
     <button id="captureBtn" class="w-16 h-16 rounded-full border-4 border-emerald-400 bg-emerald-500 active:scale-95 transition-all text-slate-950 font-bold text-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
       📸
     </button>
-    <span class="text-[11px] text-slate-400 font-mono">Pulsar para escanear chapa y pintura</span>
+    <span class="text-[11px] text-slate-400 font-mono">Pulsar para escanear</span>
   </footer>
 
   <script>
-    // Referencias a los elementos del HTML
     const video = document.getElementById('cameraFeed');
     const canvas = document.getElementById('overlayCanvas');
     const ctx = canvas.getContext('2d');
@@ -62,11 +70,6 @@
     const damageDetails = document.getElementById('damageDetails');
     const flashEffect = document.getElementById('flashEffect');
 
-    // CONFIGURACIÓN DE ROBOFLOW (De momento usamos simulación)
-    const ROBOFLOW_MODEL = "car-damage-detection-5"; 
-    const ROBOFLOW_API_KEY = "TU_API_KEY_AQUI"; 
-
-    // 1. Iniciar la cámara
     async function initCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -84,29 +87,26 @@
       }
     }
 
-    // 2. Evento al pulsar el botón de la cámara
     captureBtn.addEventListener('click', async () => {
-      // Efecto Flash visual
+      // 1. Flash visual
       flashEffect.style.opacity = '1';
       setTimeout(() => flashEffect.style.opacity = '0', 150);
 
-      // Cambio de estado en la cabecera
+      // 2. Estado de análisis
       statusText.innerText = "Analizando con IA...";
       statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping";
       resultBox.classList.add('hidden');
       resultBox.style.transform = 'scale(0)';
 
-      // Simular un tiempo de procesamiento de 1 segundo
+      // 3. Simular tiempo de procesamiento
       setTimeout(() => {
         simulateDetection();
       }, 1000);
     });
 
-    // 3. Función de simulación de detección
     function simulateDetection() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Dibujar un cuadro rojo de prueba
       const w = canvas.width * 0.4;
       const h = canvas.height * 0.25;
       const x = (canvas.width - w) / 2;
@@ -116,14 +116,12 @@
       ctx.lineWidth = 6;
       ctx.strokeRect(x, y, w, h);
       
-      // Dibujar etiqueta en el cuadro
       ctx.fillStyle = "#ef4444";
       ctx.fillRect(x, y - 30, w, 30);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 16px sans-serif";
       ctx.fillText("DAÑO DETECTADO (89%)", x + 10, y - 8);
 
-      // Mostrar el cuadro de resultados animado
       resultBox.classList.remove('hidden');
       setTimeout(() => resultBox.style.transform = 'scale(1)', 10); 
       
@@ -132,7 +130,6 @@
       statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-400";
     }
 
-    // Iniciar cámara al cargar la página
     window.addEventListener('load', initCamera);
   </script>
 </body>
