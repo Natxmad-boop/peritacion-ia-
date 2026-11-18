@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Peritación de Daños IA</title>
+  <title>Peritación IA (Local)</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Cargamos la librería de IA directamente desde un CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
   <style>
-    /* Ajustes para que ocupe toda la pantalla sin scroll ni recortes */
     html, body { height: 100%; margin: 0; padding: 0; background-color: #020617; overscroll-behavior: none; }
     #cameraFeed { width: 100%; height: 100%; object-fit: cover; }
     #overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -14,43 +15,33 @@
 </head>
 <body class="text-white flex flex-col h-[100dvh] w-screen overflow-hidden select-none font-sans">
 
-  <!-- CABECERA DE ESTADO (Arriba) -->
   <header class="p-4 bg-slate-900/95 border-b border-slate-800 flex justify-between items-center z-20 w-full shrink-0">
     <div>
       <span class="text-[10px] font-bold text-blue-400 tracking-wider uppercase">Peritación Inteligente</span>
       <h1 class="text-xs font-bold text-slate-100 flex items-center gap-1.5">
         <span id="statusIndicator" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span id="statusText">Cámara lista para escanear</span>
+        <span id="statusText">Cargando IA local...</span>
       </h1>
     </div>
-    <span class="bg-blue-900/40 text-blue-300 border border-blue-700/50 text-[11px] px-2 py-0.5 rounded font-mono font-bold">IA Visión</span>
   </header>
 
-  <!-- VISOR DE CÁMARA (Ocupa todo el espacio central) -->
   <main class="relative flex-1 bg-black flex items-center justify-center overflow-hidden w-full">
     <video id="cameraFeed" autoplay playsinline muted></video>
     <canvas id="overlayCanvas"></canvas>
-
-    <!-- Flash Blanco al disparar -->
     <div id="flashEffect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-300 z-50"></div>
-
-    <!-- HUD de encuadre pericial -->
+    
     <div class="absolute inset-4 border border-emerald-400/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 z-10">
       <span class="text-[10px] font-mono text-emerald-400 bg-slate-950/80 px-2 py-1 rounded w-fit">Encuadre: 1.5 - 2.0 m</span>
-      
-      <!-- Cuadro de resultados -->
       <div id="resultBox" class="hidden self-center bg-slate-900/95 border-2 border-emerald-500 rounded-xl p-4 text-xs text-center backdrop-blur shadow-2xl transition-all duration-300" style="transform: scale(0);">
         <p id="damageTitle" class="font-bold text-emerald-400 text-sm">✓ Análisis completado</p>
-        <p id="damageDetails" class="text-[11px] text-slate-300 mt-1">Calculando baremo...</p>
+        <p id="damageDetails" class="text-[11px] text-slate-300 mt-1">...</p>
       </div>
-      
-      <span class="text-[10px] font-mono text-slate-400 self-center mb-2">Apunta a la zona dañada de la carrocería</span>
+      <span class="text-[10px] font-mono text-slate-400 self-center mb-2">Apunta a la zona dañada</span>
     </div>
   </main>
 
-  <!-- PANEL DE DISPARO (Abajo, con su propio espacio reservado) -->
   <footer class="p-5 pb-8 bg-slate-900 border-t border-slate-800 flex flex-col items-center justify-center gap-3 z-20 w-full shrink-0">
-    <button id="captureBtn" class="w-20 h-20 rounded-full border-4 border-emerald-400 bg-emerald-500 active:scale-95 transition-all text-slate-950 font-bold text-3xl flex items-center justify-center shadow-lg shadow-emerald-500/50">
+    <button id="captureBtn" disabled class="w-20 h-20 rounded-full border-4 border-emerald-400 bg-emerald-500 active:scale-95 transition-all text-slate-950 font-bold text-3xl flex items-center justify-center shadow-lg shadow-emerald-500/50 disabled:opacity-50 disabled:bg-gray-500">
       📸
     </button>
     <span class="text-[11px] text-slate-400 font-mono uppercase tracking-widest">Escanear Daños</span>
@@ -67,9 +58,8 @@
     const damageDetails = document.getElementById('damageDetails');
     const flashEffect = document.getElementById('flashEffect');
 
-    // CONFIGURACIÓN DEL MODELO PÚBLICO
-    const ROBOFLOW_MODEL = "car-damage-detection-5"; 
-    const ROBOFLOW_API_KEY = "TU_API_KEY_AQUI"; 
+    let session = null;
+    const CLASS_NAMES = ["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light"];
 
     async function initCamera() {
       try {
@@ -82,109 +72,100 @@
           canvas.height = video.videoHeight;
         };
       } catch (err) {
-        alert("Permite el acceso a la cámara para peritar.");
+        alert("Permite el acceso a la cámara.");
         statusText.innerText = "Error: Cámara bloqueada";
         statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-500";
       }
     }
 
-    captureBtn.addEventListener('click', async () => {
-      // 1. Flash visual
-      flashEffect.style.opacity = '1';
-      setTimeout(() => flashEffect.style.opacity = '0', 150);
-
-      // 2. Estado de análisis
-      statusText.innerText = "Analizando con IA...";
-      statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping";
-      resultBox.classList.add('hidden');
-      resultBox.style.transform = 'scale(0)';
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // 3. Capturar imagen
-      const snapCanvas = document.createElement('canvas');
-      snapCanvas.width = video.videoWidth;
-      snapCanvas.height = video.videoHeight;
-      const snapCtx = snapCanvas.getContext('2d');
-      snapCtx.drawImage(video, 0, 0);
-      const base64Image = snapCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-
-      // 4. Llamada REAL a Roboflow
+    async function loadModel() {
       try {
-        const response = await fetch(`https://detect.roboflow.com/${ROBOFLOW_MODEL}/1?api_key=${ROBOFLOW_API_KEY}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: base64Image
+        statusText.innerText = "Cargando modelo de IA...";
+        // Aquí ya está corregido para que busque el archivo sin el .onnx
+        const response = await fetch('./yolov8n');
+        const modelBuffer = await response.arrayBuffer();
+        
+        session = await ort.InferenceSession.create(modelBuffer, {
+            executionProviders: ['wasm']
         });
         
-        const data = await response.json();
+        statusText.innerText = "IA lista. Apunta y dispara.";
+        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+        captureBtn.disabled = false;
+      } catch (e) {
+        console.error(e);
+        statusText.innerText = "Error al cargar el modelo";
+        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-500";
+      }
+    }
+
+    captureBtn.addEventListener('click', async () => {
+      if (!session) return;
+      
+      flashEffect.style.opacity = '1';
+      setTimeout(() => flashEffect.style.opacity = '0', 150);
+      statusText.innerText = "Analizando en el móvil...";
+      statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping";
+      resultBox.classList.add('hidden');
+
+      const snapCanvas = document.createElement('canvas');
+      snapCanvas.width = 640;
+      snapCanvas.height = 640;
+      const snapCtx = snapCanvas.getContext('2d');
+      snapCtx.drawImage(video, 0, 0, 640, 640);
+
+      const imgData = snapCtx.getImageData(0, 0, 640, 640);
+      const data = new Float32Array(3 * 640 * 640);
+      for (let i = 0; i < 640 * 640; i++) {
+        data[i] = imgData.data[i * 4] / 255.0;
+        data[i + 640 * 640] = imgData.data[i * 4 + 1] / 255.0;
+        data[i + 2 * 640 * 640] = imgData.data[i * 4 + 2] / 255.0;
+      }
+      
+      const tensor = new ort.Tensor('float32', data, [1, 3, 640, 640]);
+      
+      try {
+        const feeds = { images: tensor };
+        const results = await session.run(feeds);
+        const output = results.output0.data;
         
-        if (data.error) throw new Error(data.error);
+        let maxConf = 0;
+        let bestClass = -1;
+        for (let i = 0; i < 8400; i++) {
+            for (let c = 0; c < 80; c++) {
+                const conf = output[4 + c + i * 84];
+                if (conf > maxConf) {
+                    maxConf = conf;
+                    bestClass = c;
+                }
+            }
+        }
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        resultBox.classList.remove('hidden');
+        setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
+        
+        if (maxConf > 0.5 && bestClass >= 0 && bestClass < CLASS_NAMES.length) {
+            const label = CLASS_NAMES[bestClass];
+            damageDetails.innerHTML = `Detectado: <span class='text-red-400 font-bold'>${label}</span> (${Math.round(maxConf * 100)}%)`;
+            statusText.innerText = "Objeto detectado";
+            statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-blue-400";
+        } else {
+            damageDetails.innerHTML = `No se detectó nada con claridad`;
+            statusText.innerText = "Análisis completado";
+            statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+        }
 
-        renderDetections(data.predictions);
-
-      } catch (error) {
-        console.warn("Fallo en API pública. Usando simulación:", error);
-        fallbackSimulation();
+      } catch (e) {
+        console.error(e);
+        statusText.innerText = "Error en el análisis";
       }
     });
 
-    function renderDetections(predictions) {
-      if (!predictions || predictions.length === 0) {
-        statusText.innerText = "No se aprecian daños evidentes";
-        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
-        resultBox.classList.remove('hidden');
-        setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
-        damageDetails.innerHTML = "Estado: <span class='text-emerald-400 font-bold'>Pieza Conforme</span>";
-        return;
-      }
-
-      predictions.forEach(p => {
-        const x = p.x - p.width / 2;
-        const y = p.y - p.height / 2;
-
-        ctx.strokeStyle = "#ef4444";
-        ctx.lineWidth = 6;
-        ctx.strokeRect(x, y, p.width, p.height);
-        
-        ctx.fillStyle = "#ef4444";
-        ctx.fillRect(x, y - 30, p.width, 30);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 16px sans-serif";
-        const label = p.class ? p.class.toUpperCase() : "DAÑO";
-        ctx.fillText(`${label} (${Math.round(p.confidence * 100)}%)`, x + 10, y - 8);
-      });
-
-      resultBox.classList.remove('hidden');
-      setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
-      damageDetails.innerHTML = `Detectados: <span class='text-red-400 font-bold'>${predictions.length} daños</span>`;
-      statusText.innerText = "Daños identificados";
-      statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-400";
-    }
-
-    function fallbackSimulation() {
-      const w = canvas.width * 0.4;
-      const h = canvas.height * 0.25;
-      const x = (canvas.width - w) / 2;
-      const y = (canvas.height - h) / 2;
-
-      ctx.strokeStyle = "#ef4444";
-      ctx.lineWidth = 6;
-      ctx.strokeRect(x, y, w, h);
-      
-      ctx.fillStyle = "#ef4444";
-      ctx.fillRect(x, y - 30, w, 30);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 16px sans-serif";
-      ctx.fillText("ABOLLADURA (89%)", x + 10, y - 8);
-
-      resultBox.classList.remove('hidden');
-      setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
-      damageDetails.innerHTML = "Detectado: <span class='text-red-400 font-bold'>Daño simulado</span>";
-      statusText.innerText = "Simulación activa";
-      statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400";
-    }
-
-    window.addEventListener('load', initCamera);
+    window.addEventListener('load', async () => {
+        await initCamera();
+        await loadModel();
+    });
   </script>
 </body>
 </html>
