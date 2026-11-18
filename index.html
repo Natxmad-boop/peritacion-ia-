@@ -3,68 +3,82 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Peritación IA (Local)</title>
+  <title>Asistente de Encuadre IA</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
   <style>
     html, body { height: 100%; margin: 0; padding: 0; background-color: #020617; overscroll-behavior: none; }
     #cameraFeed { width: 100%; height: 100%; object-fit: cover; }
     #overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    /* Animación de pulso para cuando está enfocado */
+    @keyframes pulse-green {
+      0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(52, 211, 153, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+    }
+    .focused { animation: pulse-green 1.5s infinite; }
   </style>
 </head>
 <body class="text-white flex flex-col h-[100dvh] w-screen overflow-hidden select-none font-sans">
 
+  <!-- CABECERA DE ESTADO -->
   <header class="p-4 bg-slate-900/95 border-b border-slate-800 flex justify-between items-center z-20 w-full shrink-0">
     <div>
-      <span class="text-[10px] font-bold text-blue-400 tracking-wider uppercase">Peritación Inteligente</span>
-      <h1 class="text-xs font-bold text-slate-100 flex items-center gap-1.5">
-        <span id="statusIndicator" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span id="statusText">Cargando IA local...</span>
+      <span class="text-[10px] font-bold text-blue-400 tracking-wider uppercase">Asistente de Encuadre</span>
+      <h1 class="text-xs font-bold text-slate-100 flex items-center gap-1.5 mt-1">
+        <span id="statusIndicator" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+        <span id="statusText">Buscando enfoque...</span>
       </h1>
     </div>
   </header>
 
+  <!-- VISOR DE CÁMARA -->
   <main class="relative flex-1 bg-black flex items-center justify-center overflow-hidden w-full">
     <video id="cameraFeed" autoplay playsinline muted></video>
-    <canvas id="overlayCanvas"></canvas>
-    <div id="flashEffect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-300 z-50"></div>
     
-    <div class="absolute inset-4 border border-emerald-400/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 z-10">
-      <span class="text-[10px] font-mono text-emerald-400 bg-slate-950/80 px-2 py-1 rounded w-fit">Encuadre: 1.5 - 2.0 m</span>
+    <!-- Flash Blanco al disparar -->
+    <div id="flashEffect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-300 z-50"></div>
+
+    <!-- HUD de encuadre dinámico -->
+    <div id="frameHud" class="absolute inset-8 border-4 border-red-500/70 rounded-2xl pointer-events-none flex flex-col justify-between p-4 z-10 transition-colors duration-300">
+      <span id="hudText" class="text-[12px] font-mono text-red-400 bg-slate-950/80 px-3 py-1.5 rounded-lg w-fit font-bold shadow-lg border border-red-500/30">
+        Ajusta el encuadre
+      </span>
+      
+      <!-- Cuadro de resultados -->
       <div id="resultBox" class="hidden self-center bg-slate-900/95 border-2 border-emerald-500 rounded-xl p-4 text-xs text-center backdrop-blur shadow-2xl transition-all duration-300" style="transform: scale(0);">
         <p id="damageTitle" class="font-bold text-emerald-400 text-sm">✓ Análisis completado</p>
         <p id="damageDetails" class="text-[11px] text-slate-300 mt-1">...</p>
       </div>
-      <span class="text-[10px] font-mono text-slate-400 self-center mb-2">Apunta a la zona dañada</span>
+      
+      <span class="text-[10px] font-mono text-slate-400 self-center mb-2 bg-slate-950/50 px-2 py-1 rounded">Mantén el móvil a 1.5 - 2.0 m</span>
     </div>
   </main>
 
+  <!-- PANEL DE DISPARO -->
   <footer class="p-5 pb-8 bg-slate-900 border-t border-slate-800 flex flex-col items-center justify-center gap-3 z-20 w-full shrink-0">
-    <button id="captureBtn" disabled class="w-20 h-20 rounded-full border-4 border-emerald-400 bg-emerald-500 active:scale-95 transition-all text-slate-950 font-bold text-3xl flex items-center justify-center shadow-lg shadow-emerald-500/50 disabled:opacity-50 disabled:bg-gray-500">
+    <button id="captureBtn" class="w-20 h-20 rounded-full border-4 border-slate-600 bg-slate-500 active:scale-95 transition-all text-slate-950 font-bold text-3xl flex items-center justify-center shadow-lg shadow-slate-500/30">
       📸
     </button>
     <button id="downloadBtn" class="hidden mt-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-sm font-bold py-2 px-6 rounded-full transition-all">
-      💾 Guardar Foto y Seguir
+      💾 Guardar Foto Analizada
     </button>
-    <span class="text-[11px] text-slate-400 font-mono uppercase tracking-widest mt-1">Escanear Daños</span>
+    <span class="text-[11px] text-slate-400 font-mono uppercase tracking-widest mt-1">Capturar Imagen</span>
   </footer>
 
   <script>
     const video = document.getElementById('cameraFeed');
-    const canvas = document.getElementById('overlayCanvas');
-    const ctx = canvas.getContext('2d');
     const captureBtn = document.getElementById('captureBtn');
-    const downloadBtn = document.getElementById('downloadBtn');
     const statusText = document.getElementById('statusText');
     const statusIndicator = document.getElementById('statusIndicator');
-    const resultBox = document.getElementById('resultBox');
-    const damageDetails = document.getElementById('damageDetails');
+    const frameHud = document.getElementById('frameHud');
+    const hudText = document.getElementById('hudText');
     const flashEffect = document.getElementById('flashEffect');
+    const resultBox = document.getElementById('resultBox');
+    const downloadBtn = document.getElementById('downloadBtn');
 
-    let session = null;
-    let lastAnalyzedCanvas = null; 
-    const CLASS_NAMES = ["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light"];
+    let isFocused = false;
 
+    // 1. Iniciar la cámara
     async function initCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -72,139 +86,127 @@
         });
         video.srcObject = stream;
         video.onloadedmetadata = () => {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+          // Iniciar bucle de análisis de calidad
+          setInterval(analizarEncuadre, 500); 
         };
       } catch (err) {
         alert("Permite el acceso a la cámara.");
-        statusText.innerText = "Error: Cámara bloqueada";
-        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-500";
       }
     }
 
-    async function loadModel() {
-      try {
-        statusText.innerText = "Cargando modelo de IA...";
-        const response = await fetch('./yolov8n.onnx');
-        if (!response.ok) throw new Error("No se encuentra el archivo");
+    // 2. Analizar el encuadre en tiempo real (Nitidez y Contraste)
+    function analizarEncuadre() {
+      if (!video.videoWidth) return;
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = 160; // Reducimos la resolución para que sea rápido
+      tempCanvas.height = 160;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(video, 0, 0, 160, 160);
+      
+      const imgData = tempCtx.getImageData(0, 0, 160, 160).data;
+      
+      let minLum = 255, maxLum = 0;
+      let sum = 0;
+      let sumSq = 0;
+      
+      // Calcular luminancia (brillo)
+      for (let i = 0; i < imgData.length; i += 4) {
+        const r = imgData[i];
+        const g = imgData[i+1];
+        const b = imgData[i+2];
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
         
-        const modelBuffer = await response.arrayBuffer();
-        session = await ort.InferenceSession.create(modelBuffer, { executionProviders: ['wasm'] });
-        
-        statusText.innerText = "IA lista. Apunta y dispara.";
-        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
-        captureBtn.disabled = false;
-      } catch (e) {
-        console.error(e);
-        statusText.innerText = "Error al cargar el modelo";
-        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-500";
+        sum += lum;
+        sumSq += lum * lum;
+        if (lum < minLum) minLum = lum;
+        if (lum > maxLum) maxLum = lum;
+      }
+      
+      const mean = sum / (160 * 160);
+      const variance = (sumSq / (160 * 160)) - (mean * mean);
+      const stdDev = Math.sqrt(variance); // Desviación estándar (Contraste global)
+      const range = maxLum - minLum;
+
+      // Heurística de calidad:
+      // 1. Rango de luz amplio (no está tapado ni oscuro)
+      // 2. Contraste suficiente (hay textura o bordes)
+      const isWellLit = mean > 40 && mean < 220;
+      const hasContrast = range > 60 && stdDev > 25;
+
+      if (isWellLit && hasContrast) {
+        if (!isFocused) {
+          isFocused = true;
+          frameHud.classList.remove('border-red-500/70');
+          frameHud.classList.add('border-emerald-500', 'focused');
+          hudText.innerText = "¡Perfecto! Dispara ahora";
+          hudText.className = "text-[12px] font-mono text-emerald-400 bg-slate-950/80 px-3 py-1.5 rounded-lg w-fit font-bold shadow-lg border border-emerald-500/30";
+          
+          statusText.innerText = "Enfoque óptimo detectado";
+          statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+          captureBtn.className = "w-20 h-20 rounded-full border-4 border-emerald-400 bg-emerald-500 active:scale-95 transition-all text-slate-950 font-bold text-3xl flex items-center justify-center shadow-lg shadow-emerald-500/50";
+        }
+      } else {
+        if (isFocused || isFocused === false) {
+          isFocused = false;
+          frameHud.classList.remove('border-emerald-500', 'focused');
+          frameHud.classList.add('border-red-500/70');
+          
+          if (!isWellLit) {
+            hudText.innerText = "Busca más luz";
+          } else {
+            hudText.innerText = "Acércate o enfoca mejor";
+          }
+          hudText.className = "text-[12px] font-mono text-red-400 bg-slate-950/80 px-3 py-1.5 rounded-lg w-fit font-bold shadow-lg border border-red-500/30";
+          
+          statusText.innerText = "Ajustando encuadre...";
+          statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse";
+          captureBtn.className = "w-20 h-20 rounded-full border-4 border-slate-600 bg-slate-500 active:scale-95 transition-all text-slate-950 font-bold text-3xl flex items-center justify-center shadow-lg shadow-slate-500/30";
+        }
       }
     }
 
+    // 3. Acción al disparar
     captureBtn.addEventListener('click', async () => {
-      if (!session) return;
-      
-      downloadBtn.classList.add('hidden');
-      
       flashEffect.style.opacity = '1';
       setTimeout(() => flashEffect.style.opacity = '0', 150);
-      statusText.innerText = "Analizando en el móvil...";
-      statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping";
-      resultBox.classList.add('hidden');
-
-      lastAnalyzedCanvas = document.createElement('canvas');
-      lastAnalyzedCanvas.width = video.videoWidth;
-      lastAnalyzedCanvas.height = video.videoHeight;
-      const lastCtx = lastAnalyzedCanvas.getContext('2d');
-      lastCtx.drawImage(video, 0, 0);
-
+      
       const snapCanvas = document.createElement('canvas');
-      snapCanvas.width = 640;
-      snapCanvas.height = 640;
+      snapCanvas.width = video.videoWidth;
+      snapCanvas.height = video.videoHeight;
       const snapCtx = snapCanvas.getContext('2d');
-      snapCtx.drawImage(video, 0, 0, 640, 640);
-
-      const imgData = snapCtx.getImageData(0, 0, 640, 640);
-      const data = new Float32Array(3 * 640 * 640);
-      for (let i = 0; i < 640 * 640; i++) {
-        data[i] = imgData.data[i * 4] / 255.0;
-        data[i + 640 * 640] = imgData.data[i * 4 + 1] / 255.0;
-        data[i + 2 * 640 * 640] = imgData.data[i * 4 + 2] / 255.0;
-      }
+      snapCtx.drawImage(video, 0, 0);
       
-      const tensor = new ort.Tensor('float32', data, [1, 3, 640, 640]);
+      // Mostramos el cuadro de guardado
+      resultBox.classList.remove('hidden');
+      setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
+      document.getElementById('damageDetails').innerText = isFocused ? "Encuadre validado correctamente." : "Foto capturada (revisar encuadre).";
       
-      try {
-        const results = await session.run({ images: tensor });
-        const output = results.output0.data;
-        
-        let maxConf = 0;
-        let bestClass = -1;
-        for (let i = 0; i < 8400; i++) {
-            for (let c = 0; c < 80; c++) {
-                const conf = output[4 + c + i * 84];
-                if (conf > maxConf) {
-                    maxConf = conf;
-                    bestClass = c;
-                }
-            }
-        }
-        
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        resultBox.classList.remove('hidden');
-        setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
-        
-        if (maxConf > 0.5 && bestClass >= 0 && bestClass < CLASS_NAMES.length) {
-            const label = CLASS_NAMES[bestClass];
-            damageDetails.innerHTML = `Detectado: <span class='text-red-400 font-bold'>${label}</span> (${Math.round(maxConf * 100)}%)`;
-            statusText.innerText = "Objeto detectado";
-        } else {
-            damageDetails.innerHTML = `No se detectó nada con claridad`;
-            statusText.innerText = "Análisis completado";
-        }
-
-        downloadBtn.classList.remove('hidden');
-
-      } catch (e) {
-        console.error(e);
-        statusText.innerText = "Error en el análisis";
-      }
-    });
-
-    downloadBtn.addEventListener('click', () => {
-      if (!lastAnalyzedCanvas) return;
+      downloadBtn.classList.remove('hidden');
       
+      // Guardamos la foto en memoria temporal para el botón de descargar
       const finalCanvas = document.createElement('canvas');
-      finalCanvas.width = lastAnalyzedCanvas.width;
-      finalCanvas.height = lastAnalyzedCanvas.height;
+      finalCanvas.width = snapCanvas.width;
+      finalCanvas.height = snapCanvas.height;
       const finalCtx = finalCanvas.getContext('2d');
+      finalCtx.drawImage(snapCanvas, 0, 0);
       
-      finalCtx.drawImage(lastAnalyzedCanvas, 0, 0);
-      finalCtx.drawImage(canvas, 0, 0);
-
-      const link = document.createElement('a');
-      link.download = 'peritacion-coche.jpg';
-      link.href = finalCanvas.toDataURL('image/jpeg', 0.9);
-      link.click();
-
-      // --- ESTO ES LO NUEVO: REINICIAR LA APP ---
-      setTimeout(() => {
-        // Borramos el cuadro del análisis
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // Ocultamos el botón de guardar y el cuadro de texto
-        downloadBtn.classList.add('hidden');
-        resultBox.style.transform = 'scale(0)';
-        setTimeout(() => resultBox.classList.add('hidden'), 300);
-        // Volvemos a poner el estado en verde
-        statusText.innerText = "IA lista. Apunta y dispara.";
-        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
-      }, 500); // Espera medio segundo a que el móvil abra el menú de guardado
+      downloadBtn.onclick = () => {
+        const link = document.createElement('a');
+        link.download = 'foto-peritacion.jpg';
+        link.href = finalCanvas.toDataURL('image/jpeg', 0.9);
+        link.click();
+        
+        // Resetear UI
+        setTimeout(() => {
+          resultBox.style.transform = 'scale(0)';
+          setTimeout(() => resultBox.classList.add('hidden'), 300);
+          downloadBtn.classList.add('hidden');
+        }, 500);
+      };
     });
 
-    window.addEventListener('load', async () => {
-        await initCamera();
-        await loadModel();
-    });
+    window.addEventListener('load', initCamera);
   </script>
 </body>
 </html>
