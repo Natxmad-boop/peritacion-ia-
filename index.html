@@ -6,7 +6,6 @@
   <title>Peritación de Daños IA</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Aseguramos que el video y el canvas se adapten bien sin romper el diseño */
     html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #020617; }
     #cameraFeed { width: 100%; height: 100%; object-fit: cover; }
     #overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -28,30 +27,27 @@
 
   <!-- VISOR DE CÁMARA Y DETECCIÓN -->
   <main class="relative flex-1 bg-black flex items-center justify-center overflow-hidden w-full h-full">
-    <!-- Video de la cámara -->
     <video id="cameraFeed" autoplay playsinline muted></video>
-    
-    <!-- Lienzo para dibujar los daños -->
     <canvas id="overlayCanvas"></canvas>
 
-    <!-- Efecto Flash Blanco al disparar -->
+    <!-- Flash Blanco al disparar -->
     <div id="flashEffect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-300 z-50"></div>
 
-    <!-- HUD de encuadre pericial -->
+    <!-- HUD de encuadre -->
     <div class="absolute inset-4 top-20 bottom-28 border border-emerald-400/40 rounded-xl pointer-events-none flex flex-col justify-between p-3 z-10">
       <span class="text-[10px] font-mono text-emerald-400 bg-slate-950/80 px-2 py-1 rounded w-fit">Encuadre: 1.5 - 2.0 m</span>
       
       <!-- Cuadro de resultados -->
       <div id="resultBox" class="hidden self-center bg-slate-900/95 border-2 border-emerald-500 rounded-xl p-4 text-xs text-center backdrop-blur shadow-2xl transition-all duration-300" style="transform: scale(0);">
         <p id="damageTitle" class="font-bold text-emerald-400 text-sm">✓ Análisis completado</p>
-        <p id="damageDetails" class="text-[11px] text-slate-300 mt-1">Calculando baremo de reparación...</p>
+        <p id="damageDetails" class="text-[11px] text-slate-300 mt-1">Calculando baremo...</p>
       </div>
       
       <span class="text-[10px] font-mono text-slate-400 self-center mb-2">Apunta a la zona dañada de la carrocería</span>
     </div>
   </main>
 
-  <!-- PANEL DE DISPARO (Fijado abajo para que no desaparezca) -->
+  <!-- PANEL DE DISPARO -->
   <footer class="p-4 bg-slate-900/90 border-t border-slate-800 flex flex-col items-center gap-2 z-20 backdrop-blur absolute bottom-0 w-full">
     <button id="captureBtn" class="w-16 h-16 rounded-full border-4 border-emerald-400 bg-emerald-500 active:scale-95 transition-all text-slate-950 font-bold text-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
       📸
@@ -70,6 +66,10 @@
     const damageDetails = document.getElementById('damageDetails');
     const flashEffect = document.getElementById('flashEffect');
 
+    // CONFIGURACIÓN DEL MODELO PÚBLICO (Sin API KEY necesaria)
+    const ROBOFLOW_MODEL = "car-damage-detection-5"; 
+    const ROBOFLOW_API_KEY = "TU_API_KEY_AQUI"; 
+
     async function initCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -81,7 +81,7 @@
           canvas.height = video.videoHeight;
         };
       } catch (err) {
-        alert("Por favor, permite el acceso a la cámara.");
+        alert("Permite el acceso a la cámara para peritar.");
         statusText.innerText = "Error: Cámara bloqueada";
         statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-500";
       }
@@ -97,16 +97,76 @@
       statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping";
       resultBox.classList.add('hidden');
       resultBox.style.transform = 'scale(0)';
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // 3. Simular tiempo de procesamiento
-      setTimeout(() => {
-        simulateDetection();
-      }, 1000);
+      // 3. Capturar imagen
+      const snapCanvas = document.createElement('canvas');
+      snapCanvas.width = video.videoWidth;
+      snapCanvas.height = video.videoHeight;
+      const snapCtx = snapCanvas.getContext('2d');
+      snapCtx.drawImage(video, 0, 0);
+      const base64Image = snapCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+      // 4. Llamada REAL a Roboflow
+      try {
+        const response = await fetch(`https://detect.roboflow.com/${ROBOFLOW_MODEL}/1?api_key=${ROBOFLOW_API_KEY}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: base64Image
+        });
+        
+        const data = await response.json();
+        
+        // Si hay error de API, saltará al catch
+        if (data.error) throw new Error(data.error);
+
+        renderDetections(data.predictions);
+
+      } catch (error) {
+        // Si el modelo público falla o pide clave, hacemos un respaldo para que la app no se rompa
+        console.warn("Fallo en API pública. Usando simulación:", error);
+        fallbackSimulation();
+      }
     });
 
-    function simulateDetection() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
+    // Función para pintar las cajas reales
+    function renderDetections(predictions) {
+      if (!predictions || predictions.length === 0) {
+        statusText.innerText = "No se aprecian daños evidentes";
+        statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+        resultBox.classList.remove('hidden');
+        setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
+        damageDetails.innerHTML = "Estado: <span class='text-emerald-400 font-bold'>Pieza Conforme</span>";
+        return;
+      }
+
+      predictions.forEach(p => {
+        const x = p.x - p.width / 2;
+        const y = p.y - p.height / 2;
+
+        // Dibujar caja
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 6;
+        ctx.strokeRect(x, y, p.width, p.height);
+        
+        // Etiqueta
+        ctx.fillStyle = "#ef4444";
+        ctx.fillRect(x, y - 30, p.width, 30);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 16px sans-serif";
+        const label = p.class ? p.class.toUpperCase() : "DAÑO";
+        ctx.fillText(`${label} (${Math.round(p.confidence * 100)}%)`, x + 10, y - 8);
+      });
+
+      resultBox.classList.remove('hidden');
+      setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
+      damageDetails.innerHTML = `Detectados: <span class='text-red-400 font-bold'>${predictions.length} daños</span>`;
+      statusText.innerText = "Daños identificados";
+      statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-400";
+    }
+
+    // Respaldo por si la API no responde
+    function fallbackSimulation() {
       const w = canvas.width * 0.4;
       const h = canvas.height * 0.25;
       const x = (canvas.width - w) / 2;
@@ -120,14 +180,13 @@
       ctx.fillRect(x, y - 30, w, 30);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 16px sans-serif";
-      ctx.fillText("DAÑO DETECTADO (89%)", x + 10, y - 8);
+      ctx.fillText("ABOLLADURA (89%)", x + 10, y - 8);
 
       resultBox.classList.remove('hidden');
-      setTimeout(() => resultBox.style.transform = 'scale(1)', 10); 
-      
-      damageDetails.innerHTML = "Detectado: <span class='text-red-400 font-bold'>Daño en chapa</span><br>Modo simulación activo.";
-      statusText.innerText = "Inspección completada";
-      statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-400";
+      setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
+      damageDetails.innerHTML = "Detectado: <span class='text-red-400 font-bold'>Daño simulado</span><br>(Configura tu API Key para IA real)";
+      statusText.innerText = "Simulación (Falta API)";
+      statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400";
     }
 
     window.addEventListener('load', initCamera);
