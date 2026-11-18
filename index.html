@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Peritación Inteligente IA</title>
+  <title>Peritación de Daños IA</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-950 text-white min-h-screen flex flex-col justify-between overflow-hidden select-none font-sans">
@@ -11,13 +11,13 @@
   <!-- CABECERA DE ESTADO -->
   <header class="p-4 bg-slate-900/90 border-b border-slate-800 flex justify-between items-center z-10 backdrop-blur">
     <div>
-      <span class="text-[10px] font-bold text-blue-400 tracking-wider uppercase">Peritación IA</span>
+      <span class="text-[10px] font-bold text-blue-400 tracking-wider uppercase">Peritación Inteligente</span>
       <h1 class="text-xs font-bold text-slate-100 flex items-center gap-1.5">
         <span id="statusIndicator" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span id="statusText">Cámara lista para peritar</span>
+        <span id="statusText">Cámara lista para escanear</span>
       </h1>
     </div>
-    <span class="bg-blue-900/40 text-blue-300 border border-blue-700/50 text-[11px] px-2 py-0.5 rounded font-mono font-bold">Star Online</span>
+    <span class="bg-blue-900/40 text-blue-300 border border-blue-700/50 text-[11px] px-2 py-0.5 rounded font-mono font-bold">IA Visión</span>
   </header>
 
   <!-- VISOR DE CÁMARA Y DETECCIÓN -->
@@ -25,16 +25,19 @@
     <video id="cameraFeed" autoplay playsinline muted class="w-full h-full object-cover"></video>
     <canvas id="overlayCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
 
-    <!-- Flash blanco al disparar -->
+    <!-- Flash Blanco al disparar -->
     <div id="flashEffect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-300 z-50"></div>
 
-    <!-- HUD de encuadre pericial -->
+    <!-- HUD de encuadre -->
     <div class="absolute inset-6 border border-emerald-400/40 rounded-xl pointer-events-none flex flex-col justify-between p-3">
       <span class="text-[10px] font-mono text-emerald-400 bg-slate-950/80 px-2 py-1 rounded w-fit">Encuadre: 1.5 - 2.0 m</span>
-      <div id="resultBox" class="hidden self-center bg-slate-900/95 border-2 border-emerald-500 rounded-xl p-4 text-xs text-center backdrop-blur shadow-2xl transition-all transform scale-0" style="transition: transform 0.3s;">
+      
+      <!-- Cuadro de resultados (oculto al principio) -->
+      <div id="resultBox" class="hidden self-center bg-slate-900/95 border-2 border-emerald-500 rounded-xl p-4 text-xs text-center backdrop-blur shadow-2xl transition-all duration-300" style="transform: scale(0);">
         <p id="damageTitle" class="font-bold text-emerald-400 text-sm">✓ Análisis completado</p>
         <p id="damageDetails" class="text-[11px] text-slate-300 mt-1">Calculando baremo de reparación...</p>
       </div>
+      
       <span class="text-[10px] font-mono text-slate-400 self-center">Apunta a la zona dañada de la carrocería</span>
     </div>
   </main>
@@ -48,6 +51,7 @@
   </footer>
 
   <script>
+    // Referencias a los elementos del HTML
     const video = document.getElementById('cameraFeed');
     const canvas = document.getElementById('overlayCanvas');
     const ctx = canvas.getContext('2d');
@@ -58,10 +62,11 @@
     const damageDetails = document.getElementById('damageDetails');
     const flashEffect = document.getElementById('flashEffect');
 
-    // CONFIGURACIÓN DE ROBOFLOW (Modo simulación activo)
+    // CONFIGURACIÓN DE ROBOFLOW (De momento usamos simulación)
     const ROBOFLOW_MODEL = "car-damage-detection-5"; 
     const ROBOFLOW_API_KEY = "TU_API_KEY_AQUI"; 
 
+    // 1. Iniciar la cámara
     async function initCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -73,65 +78,61 @@
           canvas.height = video.videoHeight;
         };
       } catch (err) {
-        alert("Permite el acceso a la cámara para peritar.");
+        alert("Por favor, permite el acceso a la cámara.");
         statusText.innerText = "Error: Cámara bloqueada";
         statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-500";
       }
     }
 
+    // 2. Evento al pulsar el botón de la cámara
     captureBtn.addEventListener('click', async () => {
-      // 1. Efecto Flash visual
+      // Efecto Flash visual
       flashEffect.style.opacity = '1';
       setTimeout(() => flashEffect.style.opacity = '0', 150);
 
-      // 2. Cambio de estado en la cabecera
+      // Cambio de estado en la cabecera
       statusText.innerText = "Analizando con IA...";
       statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping";
       resultBox.classList.add('hidden');
       resultBox.style.transform = 'scale(0)';
 
-      // 3. Capturar imagen
-      const snapCanvas = document.createElement('canvas');
-      snapCanvas.width = video.videoWidth;
-      snapCanvas.height = video.videoHeight;
-      const snapCtx = snapCanvas.getContext('2d');
-      snapCtx.drawImage(video, 0, 0);
-      const base64Image = snapCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-
-      // 4. Simular tiempo de análisis (1 segundo)
+      // Simular un tiempo de procesamiento de 1 segundo
       setTimeout(() => {
         simulateDetection();
       }, 1000);
     });
 
+    // 3. Función de simulación de detección
     function simulateDetection() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Dibujar un cuadro rojo de prueba
       const w = canvas.width * 0.4;
       const h = canvas.height * 0.25;
       const x = (canvas.width - w) / 2;
       const y = (canvas.height - h) / 2;
 
-      // Dibujar caja roja
       ctx.strokeStyle = "#ef4444";
       ctx.lineWidth = 6;
       ctx.strokeRect(x, y, w, h);
       
-      // Etiqueta
+      // Dibujar etiqueta en el cuadro
       ctx.fillStyle = "#ef4444";
       ctx.fillRect(x, y - 30, w, 30);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 16px sans-serif";
-      ctx.fillText("ABOLLADURA (89%)", x + 10, y - 8);
+      ctx.fillText("DAÑO DETECTADO (89%)", x + 10, y - 8);
 
-      // Mostrar el recuadro de resultado con animación
+      // Mostrar el cuadro de resultados animado
       resultBox.classList.remove('hidden');
-      setTimeout(() => resultBox.style.transform = 'scale(1)', 10); // Animación de zoom
+      setTimeout(() => resultBox.style.transform = 'scale(1)', 10); 
       
       damageDetails.innerHTML = "Detectado: <span class='text-red-400 font-bold'>Daño en chapa</span><br>Modo simulación activo.";
       statusText.innerText = "Inspección completada";
       statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-red-400";
     }
 
+    // Iniciar cámara al cargar la página
     window.addEventListener('load', initCamera);
   </script>
 </body>
