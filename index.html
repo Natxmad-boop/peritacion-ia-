@@ -9,7 +9,6 @@
     html, body { height: 100%; margin: 0; padding: 0; background-color: #020617; overscroll-behavior: none; }
     #cameraFeed { width: 100%; height: 100%; object-fit: cover; }
     #overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-    /* Animación de pulso para cuando está enfocado */
     @keyframes pulse-green {
       0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
       70% { box-shadow: 0 0 0 10px rgba(52, 211, 153, 0); }
@@ -20,7 +19,6 @@
 </head>
 <body class="text-white flex flex-col h-[100dvh] w-screen overflow-hidden select-none font-sans">
 
-  <!-- CABECERA DE ESTADO -->
   <header class="p-4 bg-slate-900/95 border-b border-slate-800 flex justify-between items-center z-20 w-full shrink-0">
     <div>
       <span class="text-[10px] font-bold text-blue-400 tracking-wider uppercase">Asistente de Encuadre</span>
@@ -31,20 +29,15 @@
     </div>
   </header>
 
-  <!-- VISOR DE CÁMARA -->
   <main class="relative flex-1 bg-black flex items-center justify-center overflow-hidden w-full">
     <video id="cameraFeed" autoplay playsinline muted></video>
-    
-    <!-- Flash Blanco al disparar -->
     <div id="flashEffect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-300 z-50"></div>
 
-    <!-- HUD de encuadre dinámico -->
     <div id="frameHud" class="absolute inset-8 border-4 border-red-500/70 rounded-2xl pointer-events-none flex flex-col justify-between p-4 z-10 transition-colors duration-300">
       <span id="hudText" class="text-[12px] font-mono text-red-400 bg-slate-950/80 px-3 py-1.5 rounded-lg w-fit font-bold shadow-lg border border-red-500/30">
         Ajusta el encuadre
       </span>
       
-      <!-- Cuadro de resultados -->
       <div id="resultBox" class="hidden self-center bg-slate-900/95 border-2 border-emerald-500 rounded-xl p-4 text-xs text-center backdrop-blur shadow-2xl transition-all duration-300" style="transform: scale(0);">
         <p id="damageTitle" class="font-bold text-emerald-400 text-sm">✓ Análisis completado</p>
         <p id="damageDetails" class="text-[11px] text-slate-300 mt-1">...</p>
@@ -54,13 +47,13 @@
     </div>
   </main>
 
-  <!-- PANEL DE DISPARO -->
   <footer class="p-5 pb-8 bg-slate-900 border-t border-slate-800 flex flex-col items-center justify-center gap-3 z-20 w-full shrink-0">
     <button id="captureBtn" class="w-20 h-20 rounded-full border-4 border-slate-600 bg-slate-500 active:scale-95 transition-all text-slate-950 font-bold text-3xl flex items-center justify-center shadow-lg shadow-slate-500/30">
       📸
     </button>
-    <button id="downloadBtn" class="hidden mt-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-sm font-bold py-2 px-6 rounded-full transition-all">
-      💾 Guardar Foto Analizada
+    <!-- Cambiamos el texto del botón para que sea más claro -->
+    <button id="downloadBtn" class="hidden mt-2 bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 text-white text-sm font-bold py-3 px-6 rounded-full transition-all shadow-lg">
+      📲 Guardar en Galería
     </button>
     <span class="text-[11px] text-slate-400 font-mono uppercase tracking-widest mt-1">Capturar Imagen</span>
   </footer>
@@ -77,8 +70,8 @@
     const downloadBtn = document.getElementById('downloadBtn');
 
     let isFocused = false;
+    let lastPhotoDataUrl = null;
 
-    // 1. Iniciar la cámara
     async function initCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -86,7 +79,6 @@
         });
         video.srcObject = stream;
         video.onloadedmetadata = () => {
-          // Iniciar bucle de análisis de calidad
           setInterval(analizarEncuadre, 500); 
         };
       } catch (err) {
@@ -94,43 +86,31 @@
       }
     }
 
-    // 2. Analizar el encuadre en tiempo real (Nitidez y Contraste)
     function analizarEncuadre() {
       if (!video.videoWidth) return;
 
       const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = 160; // Reducimos la resolución para que sea rápido
+      tempCanvas.width = 160;
       tempCanvas.height = 160;
       const tempCtx = tempCanvas.getContext('2d');
       tempCtx.drawImage(video, 0, 0, 160, 160);
       
       const imgData = tempCtx.getImageData(0, 0, 160, 160).data;
+      let minLum = 255, maxLum = 0, sum = 0, sumSq = 0;
       
-      let minLum = 255, maxLum = 0;
-      let sum = 0;
-      let sumSq = 0;
-      
-      // Calcular luminancia (brillo)
       for (let i = 0; i < imgData.length; i += 4) {
-        const r = imgData[i];
-        const g = imgData[i+1];
-        const b = imgData[i+2];
+        const r = imgData[i], g = imgData[i+1], b = imgData[i+2];
         const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        
-        sum += lum;
-        sumSq += lum * lum;
+        sum += lum; sumSq += lum * lum;
         if (lum < minLum) minLum = lum;
         if (lum > maxLum) maxLum = lum;
       }
       
       const mean = sum / (160 * 160);
       const variance = (sumSq / (160 * 160)) - (mean * mean);
-      const stdDev = Math.sqrt(variance); // Desviación estándar (Contraste global)
+      const stdDev = Math.sqrt(variance);
       const range = maxLum - minLum;
 
-      // Heurística de calidad:
-      // 1. Rango de luz amplio (no está tapado ni oscuro)
-      // 2. Contraste suficiente (hay textura o bordes)
       const isWellLit = mean > 40 && mean < 220;
       const hasContrast = range > 60 && stdDev > 25;
 
@@ -141,7 +121,6 @@
           frameHud.classList.add('border-emerald-500', 'focused');
           hudText.innerText = "¡Perfecto! Dispara ahora";
           hudText.className = "text-[12px] font-mono text-emerald-400 bg-slate-950/80 px-3 py-1.5 rounded-lg w-fit font-bold shadow-lg border border-emerald-500/30";
-          
           statusText.innerText = "Enfoque óptimo detectado";
           statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
           captureBtn.className = "w-20 h-20 rounded-full border-4 border-emerald-400 bg-emerald-500 active:scale-95 transition-all text-slate-950 font-bold text-3xl flex items-center justify-center shadow-lg shadow-emerald-500/50";
@@ -151,14 +130,8 @@
           isFocused = false;
           frameHud.classList.remove('border-emerald-500', 'focused');
           frameHud.classList.add('border-red-500/70');
-          
-          if (!isWellLit) {
-            hudText.innerText = "Busca más luz";
-          } else {
-            hudText.innerText = "Acércate o enfoca mejor";
-          }
+          hudText.innerText = isWellLit ? "Acércate o enfoca mejor" : "Busca más luz";
           hudText.className = "text-[12px] font-mono text-red-400 bg-slate-950/80 px-3 py-1.5 rounded-lg w-fit font-bold shadow-lg border border-red-500/30";
-          
           statusText.innerText = "Ajustando encuadre...";
           statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse";
           captureBtn.className = "w-20 h-20 rounded-full border-4 border-slate-600 bg-slate-500 active:scale-95 transition-all text-slate-950 font-bold text-3xl flex items-center justify-center shadow-lg shadow-slate-500/30";
@@ -166,8 +139,7 @@
       }
     }
 
-    // 3. Acción al disparar
-    captureBtn.addEventListener('click', async () => {
+    captureBtn.addEventListener('click', () => {
       flashEffect.style.opacity = '1';
       setTimeout(() => flashEffect.style.opacity = '0', 150);
       
@@ -177,34 +149,54 @@
       const snapCtx = snapCanvas.getContext('2d');
       snapCtx.drawImage(video, 0, 0);
       
-      // Mostramos el cuadro de guardado
+      // Generamos la imagen final
+      lastPhotoDataUrl = snapCanvas.toDataURL('image/jpeg', 0.9);
+      
       resultBox.classList.remove('hidden');
       setTimeout(() => resultBox.style.transform = 'scale(1)', 10);
-      document.getElementById('damageDetails').innerText = isFocused ? "Encuadre validado correctamente." : "Foto capturada (revisar encuadre).";
+      document.getElementById('damageDetails').innerText = isFocused ? "Encuadre validado correctamente." : "Foto capturada.";
       
       downloadBtn.classList.remove('hidden');
-      
-      // Guardamos la foto en memoria temporal para el botón de descargar
-      const finalCanvas = document.createElement('canvas');
-      finalCanvas.width = snapCanvas.width;
-      finalCanvas.height = snapCanvas.height;
-      const finalCtx = finalCanvas.getContext('2d');
-      finalCtx.drawImage(snapCanvas, 0, 0);
-      
-      downloadBtn.onclick = () => {
-        const link = document.createElement('a');
-        link.download = 'foto-peritacion.jpg';
-        link.href = finalCanvas.toDataURL('image/jpeg', 0.9);
-        link.click();
-        
-        // Resetear UI
-        setTimeout(() => {
-          resultBox.style.transform = 'scale(0)';
-          setTimeout(() => resultBox.classList.add('hidden'), 300);
-          downloadBtn.classList.add('hidden');
-        }, 500);
-      };
     });
+
+    // NUEVO SISTEMA PARA GUARDAR EN GALERÍA
+    downloadBtn.addEventListener('click', async () => {
+      if (!lastPhotoDataUrl) return;
+
+      // Convertir DataURL a archivo para compartir
+      const res = await fetch(lastPhotoDataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], 'peritacion.jpg', { type: 'image/jpeg' });
+
+      // Usar la API de compartir nativa (en iOS abre el menú con "Guardar Imagen")
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'Foto de Peritación',
+            text: 'Imagen capturada con la app.'
+          });
+          
+          // Si comparte con éxito, reseteamos la pantalla
+          setTimeout(resetUI, 500);
+        } catch (error) {
+          console.log('Error al compartir:', error);
+        }
+      } else {
+        // Fallback para navegadores que no soportan compartir archivos (se descarga)
+        const link = document.createElement('a');
+        link.download = 'peritacion.jpg';
+        link.href = lastPhotoDataUrl;
+        link.click();
+        setTimeout(resetUI, 500);
+      }
+    });
+
+    function resetUI() {
+      resultBox.style.transform = 'scale(0)';
+      setTimeout(() => resultBox.classList.add('hidden'), 300);
+      downloadBtn.classList.add('hidden');
+    }
 
     window.addEventListener('load', initCamera);
   </script>
